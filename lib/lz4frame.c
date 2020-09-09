@@ -725,6 +725,9 @@ size_t LZ4F_compressBegin(LZ4F_cctx* cctxPtr,
  */
 size_t LZ4F_compressBound(size_t srcSize, const LZ4F_preferences_t* preferencesPtr)
 {
+    if (preferencesPtr && preferencesPtr->autoFlush) {
+        return LZ4F_compressBound_internal(srcSize, preferencesPtr, 0);
+    }
     return LZ4F_compressBound_internal(srcSize, preferencesPtr, (size_t)-1);
 }
 
@@ -1480,14 +1483,16 @@ size_t LZ4F_decompress(LZ4F_dctx* dctx,
             }   /* if (dctx->dStage == dstage_storeBlockHeader) */
 
         /* decode block header */
-            {   size_t const nextCBlockSize = LZ4F_readLE32(selectedIn) & 0x7FFFFFFFU;
+            {   U32 const blockHeader = LZ4F_readLE32(selectedIn);
+                size_t const nextCBlockSize = blockHeader & 0x7FFFFFFFU;
                 size_t const crcSize = dctx->frameInfo.blockChecksumFlag * BFSize;
-                if (nextCBlockSize==0) {  /* frameEnd signal, no more block */
+                if (blockHeader==0) {  /* frameEnd signal, no more block */
                     dctx->dStage = dstage_getSuffix;
                     break;
                 }
-                if (nextCBlockSize > dctx->maxBlockSize)
+                if (nextCBlockSize > dctx->maxBlockSize) {
                     return err0r(LZ4F_ERROR_maxBlockSize_invalid);
+                }
                 if (LZ4F_readLE32(selectedIn) & LZ4F_BLOCKUNCOMPRESSED_FLAG) {
                     /* next block is uncompressed */
                     dctx->tmpInTarget = nextCBlockSize;
